@@ -1,0 +1,18 @@
+{
+  "name": "bloc-accord",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verif": "node verif.mjs",
+    "dist": "node -e \"for(const f of ['index.html','sw.js','manifest.json','icon.svg'])require('fs').copyFileSync(f,'dist/'+f)\"",
+    "deploy": "npm run dist && npx -y wrangler pages deploy dist --project-name bloc-accord",
+    "dev-cf": "npm run dist && npx -y wrangler pages dev"
+  },
+  "devDependencies": {
+    "playwright-core": "1.63.0",
+    "qrcode": "^1.5.4"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.3"
+  }
+}

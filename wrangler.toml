@@ -1,0 +1,8 @@
+name = "bloc-accord"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-05-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bloc-accord"
+database_id = "74bea789-d2d2-4edc-8b19-92c1d1e8a45e"

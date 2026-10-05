@@ -1,0 +1,82 @@
+// Contrôles de la page Admin et des droits par rôle (appli ouverte en fichier local, sans partage).
+import { chromium } from "playwright-core";
+import { pathToFileURL } from "node:url";
+const url = pathToFileURL("index.html").href;
+let ko = 0; const ok = (c, m) => { console.log((c ? "OK: " : "ÉCHEC: ") + m); if (!c) ko++; };
+const b = await chromium.launch({ channel: "msedge", headless: true });
+const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+const errs = []; p.on("pageerror", e => errs.push(e.message)); p.on("dialog", d => d.accept());
+await p.goto(url); await p.evaluate(() => localStorage.clear()); await p.reload();
+const nav = () => p.locator("#navAdmin").isVisible();
+
+ok(!(await nav()), "le chirurgien ne voit pas l'onglet Admin");
+await p.click('[data-me="adm"]');
+ok(await nav(), "l'administrateur voit l'onglet Admin");
+await p.click("#navAdmin");
+ok(await p.locator("[data-testid=compte]").count() === 5, "la page Admin liste les 5 comptes de la démo");
+await p.fill("[data-testid=nv-nom]", "Dr Durand"); await p.selectOption("[data-testid=nv-role]", "anes"); await p.click("[data-admin=creer]");
+ok(await p.locator("[data-testid=compte]").count() === 6, "création d'un compte anesthésiste");
+ok((await p.locator("#who").innerText()).includes("Dr Durand"), "le nouveau compte apparaît dans le choix du compte en haut");
+await p.fill("[data-testid=nv-nom]", "Secrétariat"); await p.selectOption("[data-testid=nv-role]", "lecture"); await p.click("[data-admin=creer]");
+await p.screenshot({ path: "captures/16-admin.png" });
+await p.fill("[data-testid=nv-nom]", "dr durand"); await p.click("[data-admin=creer]");
+ok(await p.locator("[data-testid=compte]").count() === 7, "un doublon de nom est refusé");
+// le nouvel anesthésiste est proposable
+await p.click('[data-me="chir"]'); await p.click("#fab");
+ok(await p.locator("#sheet", { hasText: "Dr Durand" }).count() === 1, "le nouvel anesthésiste est proposable dans « Nouvelle proposition »");
+await p.click("#sheet [data-act=close]");
+// lecture seule
+const sec = await p.locator("#who button", { hasText: "Secrétariat" }).getAttribute("data-me");
+await p.click(`[data-me="${sec}"]`);
+ok(!(await p.isVisible("#fab")), "lecture seule : pas de bouton Proposer");
+await p.click(".card[data-op]");
+ok(await p.locator("#sheet [data-act=accept],#sheet [data-act=move],#sheet [data-act=cancel],#sheet [data-act=counter]").count() === 0, "lecture seule : aucune action dans le détail");
+await p.click("#sheet [data-act=close]");
+await p.click("nav [data-tab=lieux]"); await p.click("[data-testid=salle]");
+ok(await p.locator("#sheet [data-testid=creneau]").count() === 0, "lecture seule : impossible de planifier depuis une salle");
+await p.click("#sheet [data-act=close]");
+// garde-fous admin
+await p.click('[data-me="adm"]'); await p.click("#navAdmin");
+await p.selectOption('[data-role="adm"]', "lecture");
+ok(await p.inputValue('[data-role="adm"]') === "admin", "on ne peut pas retirer le dernier administrateur");
+await p.click('[data-del="an1"]');
+ok(await p.locator('[data-del="an1"]').count() === 1, "un compte qui a des interventions n'est pas supprimé");
+await p.click(`[data-del="${sec}"]`);
+ok(await p.locator("[data-testid=compte]").count() === 6, "suppression d'un compte sans intervention");
+// changement de rôle : Dr Martin passe administrateur, voit Admin
+await p.selectOption('[data-role="chir"]', "admin"); await p.click('[data-me="chir"]');
+ok(await nav(), "un rôle changé s'applique tout de suite (Dr Martin administrateur)");
+// --- référentiel : hôpitaux, salles, types, horaires
+await p.click('[data-me="adm"]'); await p.click("#navAdmin");
+const rep=[]; p.removeAllListeners("dialog"); p.on("dialog",d=>{ d.type()==="prompt"?d.accept(rep.shift()):d.accept(); });
+rep.push("Clinique Test"); await p.click("[data-cfg=addSite]");
+ok(await p.locator("[data-testid=admin-site]",{hasText:"Clinique Test"}).count()===1,"ajout d'un hôpital");
+rep.push("Bloc Z"); await p.click('[data-cfg=addRoom][data-a="Clinique%20Test"]');
+ok(await p.locator("[data-testid=admin-site]",{hasText:"Bloc Z"}).count()===1,"ajout d'une salle");
+rep.push("Salle 2 bis"); await p.click('[data-cfg=renRoom][data-a="Clinique%20du%20Parc"][data-b="Salle%202"]');
+await p.click("nav [data-tab=planning]");
+ok((await p.locator("#main").innerText()).includes("Salle 2 bis"),"renommer une salle met à jour les interventions prévues");
+await p.click("#navAdmin");
+await p.click('[data-cfg=delSite][data-a="M%C3%A9dip%C3%B4le"]');
+ok(await p.locator("[data-testid=admin-site]",{hasText:"Médipôle"}).count()===1,"un hôpital avec des interventions n'est pas supprimé");
+rep.push("Hallux valgus","40"); await p.click("[data-cfg=addType]");
+ok(await p.locator("[data-testid=admin-type]",{hasText:"Hallux valgus"}).count()===1,"ajout d'un type d'opération");
+const hz=p.locator('[data-cfgh="debut"][data-a="Clinique%20Test"][data-b="Bloc%20Z"]'); await hz.fill("08:00"); await hz.dispatchEvent("change");
+ok(await p.locator("text=Horaires du bloc").count()===0&&await p.locator("[data-testid=horaire-salle]").count()===await p.locator("[data-testid=admin-salle]").count(),"chaque salle a ses propres horaires (plus d'horaire global du bloc)");
+await p.screenshot({ path: "captures/17-admin-referentiel.png", fullPage:true });
+await p.click('[data-me="chir"]'); await p.click("nav [data-tab=planning]"); await p.click("#fab");
+ok(await p.locator("#sheet select[name=site] option",{hasText:"Clinique Test"}).count()===1,"le nouvel hôpital est proposé dans le formulaire");
+await p.selectOption("#sheet [name=label]","Hallux valgus");
+ok(await p.inputValue("#sheet [name=dur]")==="40","choisir un type applique sa durée habituelle");
+await p.click("#sheet [data-act=close]");
+await p.click("nav [data-tab=lieux]"); await p.click('[data-room="Clinique Test|Bloc Z"]');
+ok(await p.locator('#sheet [data-slot="07:30"]').count()===0&&await p.locator('#sheet [data-slot="08:00"]').count()===1,"les horaires de la salle s'appliquent à ses créneaux");
+await p.click("#sheet [data-act=close]"); await p.click('[data-room="Clinique du Parc|Salle 1"]');
+ok(await p.locator('#sheet [data-slot="07:30"]').count()===1,"les autres salles gardent leurs propres horaires");
+await p.click("#sheet [data-act=close]");
+await p.reload();
+ok(await p.locator("#who button", { hasText: "Dr Durand" }).count() === 1, "les comptes restent après rechargement");
+ok(await p.locator("[data-testid=salle]",{hasText:"Bloc Z"}).count()+await p.locator("#who button").count()>0&&await p.evaluate(()=>!!S.config.sites["Clinique Test"]),"le référentiel reste après rechargement");
+ok(errs.length === 0, "aucune erreur console " + JSON.stringify(errs));
+await b.close();
+console.log(ko ? ko + " échec(s)" : "TOUT OK"); process.exit(ko ? 1 : 0);

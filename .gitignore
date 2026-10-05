@@ -1,0 +1,12 @@
+node_modules
+lien.txt
+
+# Local Netlify folder
+.netlify
+
+.wrangler
+
+# Secrets / journaux locaux / sauvegardes
+code-equipe.txt
+*.log
+sauvegarde-planning-*.json

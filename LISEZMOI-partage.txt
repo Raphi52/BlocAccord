@@ -1,0 +1,1 @@
+Code d'équipe du planning partagé : voir code-equipe.txt (variable BLOC_CODE sur Netlify). Mise en ligne : npm run deploy
